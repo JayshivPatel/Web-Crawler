@@ -1,9 +1,11 @@
+import time
+
 from bs4 import BeautifulSoup
 import requests;
 
-INPUT_URL = "https://news.ycombinator.com"
-HREF_ELEMENTS = ["a", "area", "base", "link"]
-MAX_URL_COUNT = 100
+INPUT_URL = "https://www.freecodecamp.org/news/how-to-substring-a-string-in-python/"
+HREF_ELEMENTS = ["a", "link"]
+MAX_URL_COUNT = 1000
 
 
 class SiteCrawlerParent:
@@ -41,31 +43,56 @@ class SiteCrawlerParent:
 
     @staticmethod
     def format(base_url, url_found):
-        if (url_found[0:6] == "mailto:") or (url_found[0:4] == "tel:") or (url_found[0:4] == "http"):
+        if (url_found[0:7] == "mailto:") or (url_found[0:4] == "tel:") or (url_found[0:4] == "http"):
             return url_found
         else:
             return base_url + '/' + url_found
+
+    @staticmethod
+    def extract_base_url(full_url):
+        pair = full_url.split("//")
+        protocol = pair[0]
+        remainder = pair[1]
+        name = remainder.split("/")[0]
+        return protocol + "//" + name
 
 
 class SiteCrawlerChild:
     visited = set()
 
-    def __init__(self, base_url, max_urls):
-        self.base_url = base_url
+    def __init__(self, url_to_crawl, max_urls):
+        self.url_to_crawl = url_to_crawl
         self.max_urls = max_urls
 
     def get_urls(self):
         new_urls = set()
-        html = requests.get(self.base_url).text
+        html = requests.get(self.url_to_crawl).text
         soup = BeautifulSoup(html, "html.parser")
+        base_tag = soup.find("base")
+
+        if isinstance(base_tag, type(None)):
+            copy = self.url_to_crawl
+            pair = copy.split("//")
+            protocol = pair[0]
+            remainder = pair[1]
+            name = remainder.split("/")[0]
+            base_url = protocol + "//" + name
+        else:
+            base_url = base_tag.get()
+
         for link in soup.find_all(HREF_ELEMENTS):
+            # Make sure we don't exceed the number or URLs we have to find
             if self.max_urls <= 0:
                 break
 
             new_url = link.get("href")
-            if (new_url not in SiteCrawlerChild.visited) and (new_url not in new_urls):
-                formatted_url = SiteCrawlerParent.format(self.base_url, new_url)
-                print(formatted_url)
+
+            # Ensure we are only checking for valid urls
+            if isinstance(new_url, type(None)):
+                continue
+
+            if new_url not in SiteCrawlerChild.visited:
+                formatted_url = SiteCrawlerParent.format(base_url, new_url)
                 new_urls.add(formatted_url)
                 SiteCrawlerChild.visited.add(formatted_url)
                 self.max_urls -= 1
@@ -79,6 +106,8 @@ class SiteCrawlerChild:
 
 manager = SiteCrawlerParent(INPUT_URL, MAX_URL_COUNT)
 urls = manager.crawl()
+print("Found " + str(len(urls)) + " unique URLs")
+count = 0
 for url in urls:
-    print(url)
-print(len(urls))
+    count += 1
+    print(str(count) + ": " + url)
