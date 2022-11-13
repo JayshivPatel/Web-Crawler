@@ -1,121 +1,99 @@
 from bs4 import BeautifulSoup
 import requests
+from queue import Queue
 
-INPUT_URL = "https://www.freecodecamp.org/news/how-to-substring-a-string-in-python/"
+REFERENCE_URL = "https://news.ycombinator.com/"
 HREF_ELEMENTS = ["a", "link"]
 MAX_URL_COUNT = 100
 
+def crawl(input, max):
+    """
+    Performs a Breadth First Search on the current URL, using its embedded URLS
+    as neighbours to continue crawling.
+    Returns:
+        Set(String)
+    """
+    num_urls = 1
+    visited = {input}
+    queue = Queue()
+    queue.put(input)
 
-class SiteCrawlerParent:
-    def __init__(self, init_url, max_urls):
-        self.init_url = init_url
-        self.max_urls = max_urls
+    # Go through the queue of URLs and crawl to retrieve more
 
-        # Clear the previous runs, if applicable
-        SiteCrawlerChild.clear_visited()
+    while not queue.empty():
+        current = queue.get()
+        next_urls = get_next_urls(current)
+        for next in next_urls:
+            if num_urls >= max:
+                return visited
 
-    def crawl(self):
-        previous_urls = {self.init_url}
-        sites_remaining = self.max_urls
+            if next not in visited:
+                visited.add(next)
+                num_urls += 1
+                queue.put(next)
 
-        while sites_remaining > 0:
-            current_urls = set()
+    return visited
 
-            # Go through the previously found URLs and generate children, to crawl and retrieve more urls
-            for previous_url in previous_urls:
-                if sites_remaining <= 0:
-                    return SiteCrawlerChild.visited
+def get_next_urls(source):
+    """
+    Downloads all of the HMTL at the source URL and extracts valid URLs from
+    the relevant tags.
+    Returns:
+        Set(String)
 
-                child = SiteCrawlerChild(previous_url, sites_remaining)
-                urls_found = child.get_urls()
-                size_before = len(current_urls)
-                current_urls.update(urls_found)
-                size_after = len(current_urls)
-                diff = size_after - size_before
-                print("THESE SHOULD BE EQUAL: " + str(diff) + " and " + str(len(urls_found)))
-                sites_remaining -= diff
+    """
+    next_urls = set()
+    html = requests.get(source).text
+    soup = BeautifulSoup(html, "html.parser")
+    base_tag = soup.find("base")
+    hrefs = soup.find_all(HREF_ELEMENTS)
+    
+    for link in hrefs:
+        new_url = link.get("href")
 
-            previous_urls = current_urls
+        # Ensure we are only adding valid URLs
+        if isinstance(new_url, type(None)) or len(new_url) == 0:
+            continue
+        
+        # Skip URLs that we don't want
+        if new_url[0] == '#' or new_url[0:7] == "mailto:" or new_url[0:4] == "tel":
+            continue
 
-        return SiteCrawlerChild.visited
+        formatted_url = format_url(source, base_tag, new_url)
+        next_urls.add(formatted_url)
 
-    @staticmethod
-    def reset_children():
-        SiteCrawlerChild.clear_visited()
+    return next_urls
 
-    @staticmethod
-    def format(base_url, url_found):
-        if (url_found[0:7] == "mailto:") or (url_found[0:4] == "tel:") or (url_found[0:4] == "http"):
-            return url_found
-        else:
-            return base_url + url_found
+def format_url(source, base_tag, new_url):
+    """
+    A way to format URLs that reference the host site, or others
+    without the http to avoid errors with the requests.
+    Returns:
+        String
+    """
 
-    @staticmethod
-    def extract_base_url(full_url):
-        pair = full_url.split("//")
+    if isinstance(base_tag, type(None)):
+        pair = source.split("//")
         protocol = pair[0]
         remainder = pair[1]
         name = remainder.split("/")[0]
-        return protocol + "//" + name
+        base_url = protocol + "//" + name
+    else:
+        base_url = base_tag
 
+    if new_url[0:4] == "http":
+        return new_url
+    elif new_url[0:2] == "//":
+        return "http:" + new_url
+    elif new_url[0] == "/":
+        return base_url + new_url
+    else:
+        return base_url + '/' + new_url
 
-class SiteCrawlerChild:
-    visited = set()
+def main():
+    source = input("Enter source URL:")
+    found = crawl(source, MAX_URL_COUNT)
+    for item in found:
+        print(item)
 
-    def __init__(self, url_to_crawl, max_urls):
-        self.url_to_crawl = url_to_crawl
-        self.max_urls = max_urls
-
-    def get_urls(self):
-        new_urls = set()
-        html = requests.get(self.url_to_crawl).text
-        soup = BeautifulSoup(html, "html.parser")
-        hrefs = soup.find_all(HREF_ELEMENTS)
-        base_tag = soup.find("base")
-
-        if isinstance(base_tag, type(None)):
-            copy = self.url_to_crawl
-            pair = copy.split("//")
-            protocol = pair[0]
-            remainder = pair[1]
-            name = remainder.split("/")[0]
-            base_url = protocol + "//" + name
-        else:
-            base_url = base_tag.get()
-
-        for link in hrefs:
-            # Make sure we don't exceed the number or URLs we have to find
-            if self.max_urls <= 0:
-                return new_urls
-
-            new_url = link.get("href")
-
-            # Ensure we are only checking for valid URLs
-            if isinstance(new_url, type(None)) or len(new_url) == 0 :
-                continue
-            
-            # Skip URLs that we don't want
-            if new_url[0] == '#':
-                continue
-
-            if new_url not in SiteCrawlerChild.visited:
-                formatted_url = SiteCrawlerParent.format(base_url, new_url)
-                SiteCrawlerChild.visited.add(formatted_url)
-                new_urls.add(formatted_url)
-                self.max_urls -= 1
-
-        return new_urls
-
-    @staticmethod
-    def clear_visited():
-        SiteCrawlerChild.visited = set()
-
-
-manager = SiteCrawlerParent(INPUT_URL, MAX_URL_COUNT)
-urls = manager.crawl()
-print("Found " + str(len(urls)) + " unique URLs")
-count = 0
-for url in urls:
-    count += 1
-    print(str(count) + ": " + url)
-manager.reset_children()
+main()
