@@ -79,7 +79,7 @@ def format_url(source, base_tag, new_url):
         name = remainder.split("/")[0]
         base_url = protocol + "//" + name
     else:
-        base_url = base_tag
+        base_url = base_tag.get("href")
 
     if new_url[0:4] == "http":
         return new_url
