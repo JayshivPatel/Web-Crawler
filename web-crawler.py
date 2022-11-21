@@ -56,7 +56,7 @@ def get_next_urls(source):
             continue
         
         # Skip URLs that we don't want
-        if new_url[0] == '#' or new_url[0:7] == "mailto:" or new_url[0:4] == "tel":
+        if new_url[0] == '#' or new_url[0:7] == "mailto:" or new_url[0:4] == "tel:":
             continue
 
         formatted_url = format_url(source, base_tag, new_url)
